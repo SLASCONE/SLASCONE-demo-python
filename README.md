@@ -87,36 +87,12 @@ This sample application showcases the following key features of the SLASCONE lic
 * Demonstrates how a license can be released from a client
 * Allows a license to be transferred to a different client
 
-### Analytics Capabilities
-
-**Analytical Heartbeat**
-
-* Sends general troubleshooting or application-level information
-* Supports custom fields for application-specific metrics
-
-**Feature Usage Tracking**
-
-* Records which features are used
-* Tracks feature usage frequency and patterns
-* Provides insight for product development and pricing decisions
-
-**Consumption Tracking**
-
-* Reports usage-based metrics such as API calls or processed documents
-* Supports pay-per-use licensing models
-* Compares consumption with configured limitations
-
 ### Floating License Management
 
 **Session Management**
 
 * Opens and closes licensing sessions for floating-license scenarios
 * Supports limiting concurrent use across installed clients
-
-**Offline Session Handling**
-
-* Reads and validates locally stored session data
-* Helps maintain license compliance during temporary network interruptions
 
 **Session Closure**
 
@@ -137,15 +113,11 @@ This sample application showcases the following key features of the SLASCONE lic
 * Prevents modification of license data
 * Uses the configured public key and native validation library
 
-**Replay Protection**
-
-* Uses nonce-based challenge-response protection where applicable
-
 ## Running the Notebooks
 
 Open `slascone-sdk.ipynb` for offline license validation or `licensing.ipynb` for the REST API workflow.
 
-The bundled `SlasconeClient.so` is a Linux build. Use a compatible build for the target platform by passing `library_path` to `SlasconeClient`. If a native library does not work in your environment, verify that it matches the C ABI in `SlasconeClient.h` and is compatible with your operating system and architecture.
+The bundled `SlasconeClient.so` is the native C library from the [SLASCONE-sdk](https://github.com/SLASCONE/SLASCONE-sdk) project. Use a compatible build for the target platform by passing `library_path` to `SlasconeClient`. If a native library does not work in your environment, verify that it matches the C ABI in `SlasconeClient.h` and is compatible with your operating system and architecture.
 
 The native library is expected to implement ABI version 2. The Python wrapper rejects incompatible library builds.
 
@@ -165,95 +137,6 @@ You can find these values as explained in [API Fundamentals](https://support.sla
 
 > [!WARNING]
 > Keep provisioning keys secure and do not embed production secrets in publicly accessible repositories. See [Secrets](https://support.slascone.com/hc/en-us/articles/7702036319261#secrets) in the SLASCONE Help Center for more information.
-
-## Typical Licensing Flow
-
-A typical integration follows this sequence:
-
-1. Identify the current client or device.
-2. Activate the license for that client.
-3. Send regular heartbeats to retrieve the latest license state.
-4. Store the last valid license information locally.
-5. Fall back to the cached license state during temporary connectivity issues.
-6. Open and close sessions when using floating licenses.
-7. Send analytical, usage, or consumption heartbeats as required by your product.
-8. Unassign the license when needed.
-
-This sample demonstrates these patterns in notebooks and a compact Python native-client wrapper so you can adapt the relevant parts to your own product.
-
-## Offline Licensing and Freeride Period
-
-The SLASCONE licensing system supports temporary and permanent offline scenarios. This is especially important for desktop applications, container workloads, and intermittently connected systems. For background, see [Offline and Connectivity](https://support.slascone.com/hc/en-us/sections/10214124833693).
-
-### License Caching
-
-During a successful license heartbeat, the application can save the latest license data locally. The cached information includes features, limitations, and expiration details and should be protected with digital signatures.
-
-### Offline Validation
-
-When the application cannot connect to the SLASCONE server, it can validate the cached or separately supplied license state before using it. The application should verify the digital signature and continue enforcing features, limitations, expiration dates, and client bindings from the validated state.
-
-The native Python example demonstrates:
-
-```python
-status = client.read_offline_license("license.xml")
-if status == SlasconeStatus.OK:
-    status = client.check_offline_license("activation.xml")
-```
-
-Passing `None`, or omitting the activation path, selects inline activation.
-
-### Freeride Period
-
-The freeride period provides a configured grace period when heartbeats fail.
-
-* It prevents immediate software lockout during temporary connectivity issues.
-* It gives users time to restore connectivity.
-* It tracks the time since the last successful heartbeat.
-* A successful heartbeat resets the freeride state.
-* Once the freeride period expires without a successful heartbeat, license enforcement takes effect.
-
-Freeride periods are configured at the license edition level in the SLASCONE portal. Reserve freeride logic for true offline scenarios rather than every technical server error.
-
-## Container Licensing Example
-
-`licensing.ipynb` shows one approach for assigning a stable client identity in a Linux container:
-
-1. Start a container with the required license or configuration available to the notebook.
-2. Identify the host or container client ID.
-3. Read the license and product configuration values.
-4. Send a heartbeat.
-5. Activate the client when the license is not yet known.
-6. Open and close a floating session when required.
-
-Example container command:
-
-```bash
-docker run --name slascone-demo \
-  --env SLAS_LICENSE_ID=your-license-id \
-  --volume C:\Projects\jovyan:/home/jovyan \
-  -p 8888:8888 \
-  jupyter/scipy-notebook:latest
-```
-
-Container IDs can change when containers are recreated. Decide whether the license should identify the container, an installed workload, or another stable client abstraction.
-
-## Configuration and Storage
-
-For detailed guidance on what should be stored locally, why it matters, and how cached license state supports offline and freeride scenarios, see [What to Store Locally in Your Client](https://support.slascone.com/hc/en-us/articles/7702036319261).
-
-The native example uses locally available signed files rather than a general application-data folder. A production integration should persist only the license and session data required for its licensing model.
-
-The following files are included as examples:
-
-| File | Purpose |
-| --- | --- |
-| `assets/ActivationFile.xml` | Example activation data. |
-| `assets/License_...xml` | Example signed offline license data. |
-| `slascone-client/SlasconeClient.so` | Bundled Linux native client library. |
-| `slascone-client/SlasconeClient.h` | C ABI header. |
-
-Store cached license data in a persistent, access-controlled location appropriate for the target operating system. Verify signatures before use and remove stale or invalid state according to the licensing policy.
 
 ## Native Python Client
 
