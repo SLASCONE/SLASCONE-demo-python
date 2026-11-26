@@ -1,6 +1,6 @@
 """Python bindings for the SlasconeClient C ABI."""
 
-from ctypes import CDLL, c_char_p, c_int, c_uint32, c_void_p
+from ctypes import CDLL, POINTER, byref, c_bool, c_char_p, c_int, c_uint32, c_void_p
 from enum import IntEnum
 from os import PathLike, fspath
 from pathlib import Path
@@ -11,7 +11,7 @@ from weakref import finalize
 
 
 _DEFAULT_LIBRARY = Path(__file__).resolve().parent / "slascone-client" / "SlasconeClient.so"
-_ABI_VERSION = 1
+_ABI_VERSION = 2
 
 
 class SlasconeStatus(IntEnum):
@@ -31,6 +31,7 @@ class SlasconeStatus(IntEnum):
     INVALID_LICENSE_DATES = 13
     LICENSE_NOT_YET_VALID = 14
     LICENSE_EXPIRED = 15
+    PRODUCT_ID_MISMATCH = 16
 
 
 def _encode(value: str) -> bytes:
@@ -68,8 +69,12 @@ class SlasconeClient:
         for setter in (library.set_client_id, library.set_software_release, library.set_pem_key):
             setter.argtypes = [c_void_p, c_char_p]
             setter.restype = c_int
-        library.check_offline_license.argtypes = [c_void_p, c_char_p, c_char_p]
+        library.read_offline_license.argtypes = [c_void_p, c_char_p]
+        library.read_offline_license.restype = c_int
+        library.check_offline_license.argtypes = [c_void_p, c_char_p]
         library.check_offline_license.restype = c_int
+        library.check_license_feature.argtypes = [c_void_p, c_char_p, POINTER(c_bool)]
+        library.check_license_feature.restype = c_int
 
         self._library = library
         self._lock = Lock()
@@ -105,20 +110,47 @@ class SlasconeClient:
         with self._lock:
             return SlasconeStatus(self._library.set_pem_key(self._open_handle(), _encode(value)))
 
-    def check_offline_license(
+    def read_offline_license(
         self,
         license_path: str | PathLike[str],
+    ) -> SlasconeStatus:
+        """Verify and cache a signed offline license file."""
+        with self._lock:
+            return SlasconeStatus(
+                self._library.read_offline_license(
+                    self._open_handle(),
+                    _encode(fspath(license_path)),
+                )
+            )
+
+    def check_offline_license(
+        self,
         activation_path: str | PathLike[str] | None = None,
     ) -> SlasconeStatus:
-        """Check a license file. None or an empty activation path selects inline activation."""
+        """Check the cached license. None or an empty path selects inline activation."""
         with self._lock:
             return SlasconeStatus(
                 self._library.check_offline_license(
                     self._open_handle(),
-                    _encode(fspath(license_path)),
                     None if activation_path is None else _encode(fspath(activation_path)),
                 )
             )
+
+    def check_license_feature(
+        self,
+        feature_id: str,
+    ) -> tuple[SlasconeStatus, bool]:
+        """Read a signed license feature flag."""
+        is_active = c_bool(False)
+        with self._lock:
+            status = SlasconeStatus(
+                self._library.check_license_feature(
+                    self._open_handle(),
+                    _encode(feature_id),
+                    byref(is_active),
+                )
+            )
+        return status, bool(is_active.value)
 
     def close(self) -> None:
         """Release the handle. Closing more than once is safe."""
